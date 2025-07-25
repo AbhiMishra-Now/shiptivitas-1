@@ -30,10 +30,20 @@ export default class Board extends React.Component {
       this.swimlanes.complete.current
     ]);
 
-    drake.on('drop', (el, target) => {
+    drake.on('drop', (el, target, source) => {
       const clientId = el.getAttribute('data-id');
-      const targetLane = target.getAttribute('data-lane'); // "backlog", "in-progress", or "complete"
+      const targetLane = target.getAttribute('data-lane');
+      const sourceLane = source.getAttribute('data-lane');
 
+      // Cancel the dragula move to prevent DOM manipulation
+      drake.cancel(true);
+
+      // If dropped in the same lane, do nothing
+      if (targetLane === sourceLane) {
+        return;
+      }
+
+      // Update state through React
       this.setState(prevState => {
         const allClients = [
           ...prevState.clients.backlog,
@@ -45,7 +55,7 @@ export default class Board extends React.Component {
         if (!movedClient) return prevState;
 
         // Update client status
-        movedClient.status = targetLane;
+        movedClient.status = targetLane === 'in-progress' ? 'in-progress' : targetLane;
 
         // Distribute clients again
         const updatedClients = {
@@ -55,17 +65,28 @@ export default class Board extends React.Component {
         };
 
         allClients.forEach(client => {
-          updatedClients[client.status === 'in-progress' ? 'inProgress' :
-                         client.status === 'complete' ? 'complete' : 'backlog'].push(client);
+          const status = client.status;
+          if (status === 'in-progress') {
+            updatedClients.inProgress.push(client);
+          } else if (status === 'complete') {
+            updatedClients.complete.push(client);
+          } else {
+            updatedClients.backlog.push(client);
+          }
         });
 
         return { clients: updatedClients };
       });
-
-      // Update card class to change color
-      el.classList.remove('backlog', 'in-progress', 'complete');
-      el.classList.add(targetLane);
     });
+
+    // Store drake instance for cleanup
+    this.drake = drake;
+  }
+
+  componentWillUnmount() {
+    if (this.drake) {
+      this.drake.destroy();
+    }
   }
 
   getClients() {
